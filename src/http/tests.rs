@@ -177,8 +177,24 @@ fn context() -> std::sync::Arc<crate::Context> {
     std::sync::Arc::new(crate::Context {
         peer,
         tls: json!({}),
-        packets: crate::tcp::Capture::default().connection(peer, local),
+        packets: Some(crate::tcp::Capture::default().connection(peer, local)),
     })
+}
+
+#[tokio::test]
+async fn tls_only_response_has_no_request_or_packet_metadata() {
+    let tls = json!({"ja3_hash":"fixture", "tls_version_negotiated":"772"});
+    let context = crate::Context {
+        peer: "127.0.0.1:12345".parse().unwrap(),
+        tls: tls.clone(),
+        packets: None,
+    };
+    for version in ["HTTP/1.1", "h2"] {
+        let response = context
+            .response(version, "GET", Some("example"), json!({}))
+            .await;
+        assert_eq!(response, json!({"tls": tls}));
+    }
 }
 
 #[tokio::test]

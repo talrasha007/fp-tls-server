@@ -325,3 +325,18 @@ async fn ipv4_zero_total_length_uses_captured_ip_length_like_gopacket() {
         60
     );
 }
+#[cfg(target_os = "linux")]
+#[test]
+fn only_capture_permission_errors_enable_tls_only_mode() {
+    use pcap::Error;
+    assert!(super::capture_permission_denied(&Error::PcapError(
+        "socket: Operation not permitted".into()
+    )));
+    assert!(super::capture_permission_denied(&Error::IoError(
+        std::io::ErrorKind::PermissionDenied
+    )));
+    assert!(!super::capture_permission_denied(&Error::PcapError(
+        "permission denied: No such device exists".into()
+    )));
+    assert!(!super::capture_permission_denied(&Error::InvalidLinktype));
+}

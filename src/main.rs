@@ -19,7 +19,7 @@ use tokio_rustls::TlsAcceptor;
 pub struct Context {
     peer: SocketAddr,
     tls: Value,
-    packets: tcp::Connection,
+    packets: Option<tcp::Connection>,
 }
 
 impl Context {
@@ -30,13 +30,16 @@ impl Context {
         user_agent: Option<&str>,
         details: Value,
     ) -> Value {
+        let Some(packets) = &self.packets else {
+            return json!({ "tls": &self.tls });
+        };
         let mut response = json!({
             "donate": "",
             "ip": self.peer.to_string(),
             "http_version": version,
             "method": method,
             "tls": &self.tls,
-            "tcpip": self.packets.snapshot().await
+            "tcpip": packets.snapshot().await
         });
         if let Some(agent) = user_agent.filter(|agent| !agent.is_empty()) {
             response["user_agent"] = json!(agent);
@@ -79,9 +82,14 @@ fn listen(address: SocketAddr) -> Result<TcpListener> {
     Ok(TcpListener::from_std(socket.into())?)
 }
 
-async fn handle(socket: TcpStream, acceptor: TlsAcceptor, capture: &tcp::Capture) -> Result<()> {
+async fn handle(
+    socket: TcpStream,
+    acceptor: TlsAcceptor,
+    capture: Option<&tcp::Capture>,
+) -> Result<()> {
     let peer = socket.peer_addr()?;
-    let packets = capture.connection(peer, socket.local_addr()?);
+    let local = socket.local_addr()?;
+    let packets = capture.map(|capture| capture.connection(peer, local));
     let (hello, stream) = timeout(Duration::from_secs(10), async {
         let (hello, replay) = handshake::read_client_hello(socket).await?;
         let stream = acceptor.accept(replay).await?;
@@ -131,7 +139,13 @@ async fn main() -> Result<()> {
         .with_context(|| format!("start capture on {device}"))?;
     let listener = listen(address).with_context(|| format!("listen on {address}"))?;
     let slots = Arc::new(Semaphore::new(512));
-    eprintln!("Listening on {address}, capturing on {device}");
+    if capture.is_some() {
+        eprintln!("Listening on {address}, capturing on {device}");
+    } else {
+        eprintln!(
+            "Listening on {address}, capture permission denied on {device}; serving TLS data only"
+        );
+    }
     loop {
         let slot = slots.clone().acquire_owned().await?;
         let (socket, _) = match listener.accept().await {
@@ -148,7 +162,7 @@ async fn main() -> Result<()> {
         let capture = capture.clone();
         tokio::spawn(async move {
             let _slot = slot;
-            if let Err(err) = handle(socket, acceptor, &capture).await {
+            if let Err(err) = handle(socket, acceptor, capture.as_ref()).await {
                 eprintln!("Connection closed: {err:#}");
             }
         });

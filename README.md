@@ -69,6 +69,10 @@ services:
 
 ## 如何读取结果
 
+如果启动时系统拒绝抓包（例如容器缺少 `NET_RAW`），服务会记录启动提示并继续提供 HTTPS。在这种模式下，HTTP/1.1 和 HTTP/2 的 `GET /api/all` 都返回 HTTP 200，JSON 顶层只有 `tls`，其中包含完整的握手详情和 TLS 指纹。要在 Compose 中使用这种模式，可以从 `cap_add` 移除 `NET_RAW`，保留现有的 `cap_drop: [ALL]` 和监听 443 所需的 `NET_BIND_SERVICE`，然后运行 `docker compose up -d` 重建容器。
+
+抓包成功启动时，接口返回以下字段。
+
 | 字段 | 数据来源 |
 | --- | --- |
 | `ip`、`http_version`、`method`、`user_agent` | 对端 IP 和端口、实际请求协议、方法以及可选的 User-Agent |

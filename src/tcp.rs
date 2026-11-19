@@ -275,7 +275,22 @@ pub struct Capture {
 
 impl Capture {
     #[cfg(target_os = "linux")]
-    pub fn start(device: &str, port: u16) -> anyhow::Result<Self> {
+    pub fn start(device: &str, port: u16) -> anyhow::Result<Option<Self>> {
+        match Self::try_start(device, port) {
+            Ok(capture) => Ok(Some(capture)),
+            Err(error)
+                if error
+                    .downcast_ref::<pcap::Error>()
+                    .is_some_and(capture_permission_denied) =>
+            {
+                Ok(None)
+            }
+            Err(error) => Err(error),
+        }
+    }
+
+    #[cfg(target_os = "linux")]
+    fn try_start(device: &str, port: u16) -> anyhow::Result<Self> {
         use anyhow::{ensure, Context};
         let mut handle = pcap::Capture::from_device(device)?
             .snaplen(1024)
@@ -346,7 +361,7 @@ impl Capture {
     }
 
     #[cfg(not(target_os = "linux"))]
-    pub fn start(_: &str, _: u16) -> anyhow::Result<Self> {
+    pub fn start(_: &str, _: u16) -> anyhow::Result<Option<Self>> {
         anyhow::bail!("live packet capture requires Linux")
     }
 
@@ -371,6 +386,25 @@ impl Capture {
             flow,
             shared,
         }
+    }
+}
+
+#[cfg(target_os = "linux")]
+fn capture_permission_denied(error: &pcap::Error) -> bool {
+    use std::io::{Error, ErrorKind};
+    match error {
+        pcap::Error::IoError(kind) => *kind == ErrorKind::PermissionDenied,
+        pcap::Error::ErrnoError(errno) => {
+            Error::from_raw_os_error(errno.0).kind() == ErrorKind::PermissionDenied
+        }
+        // pcap 2.x flattens the pcap_activate status into libpcap's error text.
+        pcap::Error::PcapError(message) => {
+            let reason = message.rsplit(": ").next().unwrap_or(message);
+            reason.eq_ignore_ascii_case("operation not permitted")
+                || reason.eq_ignore_ascii_case("permission denied")
+                || message.starts_with("You don't have permission to ")
+        }
+        _ => false,
     }
 }
 
