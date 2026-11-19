@@ -10,11 +10,37 @@
 docker pull ghcr.io/talrasha007/fp-tls-server:v1.2.3
 ```
 
-使用预构建镜像时，将 `compose.yaml` 中的 `build: .` 替换为 `image: ghcr.io/talrasha007/fp-tls-server:v1.2.3`，版本号填写实际发布的标签，启动命令使用 `docker compose up -d`。
+使用预构建镜像时，将下面的示例保存为 `compose.yaml`，并把 `v1.2.3` 换成实际发布的标签。
+
+```yaml
+services:
+  server:
+    image: ghcr.io/talrasha007/fp-tls-server:v1.2.3
+    init: true
+    network_mode: host
+    cap_drop: [ALL]
+    cap_add: [NET_RAW, NET_BIND_SERVICE]
+    security_opt: [no-new-privileges:true]
+    read_only: true
+    environment:
+      LISTEN_ADDR: "${LISTEN_ADDR:-[::]:443}"
+      CAPTURE_DEVICE: "${CAPTURE_DEVICE:?Set CAPTURE_DEVICE to the ingress network interface}"
+      TLS_CERT: /certs/fullchain.pem
+      TLS_KEY: /certs/privkey.pem
+    volumes:
+      - "${CERT_DIR:-./certs}:/certs:ro"
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+```
+
+每个容器的日志文件达到 10 MiB 时轮转，最多保留 3 个文件（含当前文件）。可用 `docker compose logs -f server` 查看实时日志。[Docker 日志轮转说明](https://docs.docker.com/engine/logging/drivers/json-file/#options)
 
 域名的 A 或 AAAA 记录指向运行 Docker Engine 的主机，客户端直接连接该机的 TCP 443。先确认端口可用，再用 `ip -br addr` 找到接收客户端流量的网卡名称。
 
-1. 在仓库根目录创建 `certs/`，将域名的 PEM 证书链保存为 `certs/fullchain.pem`，对应的 PEM 私钥保存为 `certs/privkey.pem`。也可以用 `CERT_DIR` 指向包含这两个文件的现有目录。挂载目录中的符号链接需要能在容器内解析。私钥应仅允许服务读取。
+1. 在 `compose.yaml` 所在目录创建 `certs/`，将域名的 PEM 证书链保存为 `certs/fullchain.pem`，对应的 PEM 私钥保存为 `certs/privkey.pem`。也可以用 `CERT_DIR` 指向包含这两个文件的现有目录。挂载目录中的符号链接需要能在容器内解析。私钥应仅允许服务读取。
 2. 在同一目录创建 `.env`，将示例网卡名改为实际的入口网卡。
 
    ```dotenv
@@ -23,10 +49,10 @@ docker pull ghcr.io/talrasha007/fp-tls-server:v1.2.3
    CERT_DIR=./certs
    ```
 
-3. 构建并启动服务。
+3. 启动服务。若使用仓库自带的 `compose.yaml` 从源码构建，可在启动命令末尾添加 `--build`。
 
    ```sh
-   docker compose up -d --build
+   docker compose up -d
    docker compose logs server
    ```
 
