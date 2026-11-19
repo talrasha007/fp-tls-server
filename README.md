@@ -6,6 +6,8 @@
 
 发布 GitHub Release（含预发布版）时，GitHub Actions 会将该版本的 Linux amd64 镜像推送到 GitHub Container Registry。镜像使用 Release 的 Git 标签。例如，发布 `v1.2.3` 后可运行以下命令拉取镜像。
 
+已经部署的地址[https://tls.lgjf.top/api/all](https://tls.lgjf.top/api/all)
+
 ```sh
 docker pull ghcr.io/talrasha007/fp-tls-server:v1.2.3
 ```
