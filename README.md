@@ -4,6 +4,14 @@
 
 ## 在 Linux 上用 Docker Compose 运行
 
+发布 GitHub Release（含预发布版）时，GitHub Actions 会将该版本的 Linux amd64 镜像推送到 GitHub Container Registry。镜像使用 Release 的 Git 标签。例如，发布 `v1.2.3` 后可运行以下命令拉取镜像。
+
+```sh
+docker pull ghcr.io/talrasha007/fp-tls-server:v1.2.3
+```
+
+使用预构建镜像时，将 `compose.yaml` 中的 `build: .` 替换为 `image: ghcr.io/talrasha007/fp-tls-server:v1.2.3`，版本号填写实际发布的标签，启动命令使用 `docker compose up -d`。
+
 域名的 A 或 AAAA 记录指向运行 Docker Engine 的主机，客户端直接连接该机的 TCP 443。先确认端口可用，再用 `ip -br addr` 找到接收客户端流量的网卡名称。
 
 1. 在仓库根目录创建 `certs/`，将域名的 PEM 证书链保存为 `certs/fullchain.pem`，对应的 PEM 私钥保存为 `certs/privkey.pem`。也可以用 `CERT_DIR` 指向包含这两个文件的现有目录。挂载目录中的符号链接需要能在容器内解析。私钥应仅允许服务读取。
