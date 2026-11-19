@@ -1,7 +1,7 @@
 use crate::Context;
 use anyhow::{ensure, Context as _, Result};
 use serde_json::{json, Value};
-use std::{sync::Arc, time::Duration};
+use std::{io::Write, sync::Arc, time::Duration};
 use tokio::{
     io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt},
     time::timeout,
@@ -73,26 +73,41 @@ async fn read_head(io: &mut (impl AsyncRead + Unpin)) -> Result<RequestHead> {
     })
 }
 
-async fn route(context: &Context, head: RequestHead) -> (http::StatusCode, Value) {
+async fn route(context: &Context, head: RequestHead) -> Result<(http::StatusCode, String)> {
     use http::StatusCode;
     if head.path.split('?').next() != Some("/api/all") {
-        return (StatusCode::NOT_FOUND, json!({"error":"not found"}));
+        return Ok((
+            StatusCode::NOT_FOUND,
+            json!({"error":"not found"}).to_string(),
+        ));
     }
-    if head.method != "GET" {
-        return (
+    let (status, value) = if head.method != "GET" {
+        (
             StatusCode::METHOD_NOT_ALLOWED,
             json!({"error":"method not allowed"}),
-        );
-    }
-    let value = context
-        .response(
-            head.version,
-            &head.method,
-            head.user_agent.as_deref(),
-            head.details,
         )
-        .await;
-    (StatusCode::OK, value)
+    } else {
+        let value = context
+            .response(
+                head.version,
+                &head.method,
+                head.user_agent.as_deref(),
+                head.details,
+            )
+            .await;
+        (StatusCode::OK, value)
+    };
+    // Use the same serialization for the response and its single stdout record.
+    // A slow Docker log pipe must not block the async I/O worker.
+    let body = tokio::task::spawn_blocking(move || {
+        let body = value.to_string();
+        if let Err(error) = writeln!(std::io::stdout().lock(), "{body}") {
+            eprintln!("Could not log /api/all response: {error}");
+        }
+        body
+    })
+    .await?;
+    Ok((status, body))
 }
 
 pub async fn serve<S>(mut io: S, is_h2: bool, context: Arc<Context>) -> Result<()>
@@ -102,14 +117,13 @@ where
     if is_h2 {
         return h2_server::serve(io, context).await;
     }
-    let (status, json) = match timeout(DEADLINE, read_head(&mut io)).await? {
-        Ok(head) => route(&context, head).await,
+    let (status, body) = match timeout(DEADLINE, read_head(&mut io)).await? {
+        Ok(head) => route(&context, head).await?,
         Err(_) => (
             http::StatusCode::BAD_REQUEST,
-            json!({"error":"bad request"}),
+            json!({"error":"bad request"}).to_string(),
         ),
     };
-    let body = serde_json::to_vec(&json)?;
     let allow = if status == http::StatusCode::METHOD_NOT_ALLOWED {
         "Allow: GET\r\n"
     } else {
@@ -119,7 +133,7 @@ where
         status.as_u16(), status.canonical_reason().unwrap_or(""), body.len());
     timeout(DEADLINE, async {
         io.write_all(headers.as_bytes()).await?;
-        io.write_all(&body).await?;
+        io.write_all(body.as_bytes()).await?;
         io.shutdown().await
     })
     .await??;

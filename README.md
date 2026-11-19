@@ -36,7 +36,9 @@ services:
         max-file: "3"
 ```
 
-每个容器的日志文件达到 10 MiB 时轮转，最多保留 3 个文件（含当前文件）。可用 `docker compose logs -f server` 查看实时日志。[Docker 日志轮转说明](https://docs.docker.com/engine/logging/drivers/json-file/#options)
+服务在发送 `/api/all` 的响应前，将完整 JSON 响应体按每条一行写入标准输出。HTTP/1.1 和 HTTP/2 均使用此格式，仅 TLS 模式下日志也只有 `tls` 字段。完整模式会原样记录响应中的客户端 IP、指纹和请求头，包括客户端发来的 Cookie 或 Authorization 值。启动和错误信息写入标准错误。
+
+使用上述示例时，每个容器的日志文件达到 10 MiB 时轮转，最多保留 3 个文件（含当前文件）。可用 `docker compose logs -f server` 查看实时日志。[Docker 日志轮转说明](https://docs.docker.com/engine/logging/drivers/json-file/#options)
 
 域名的 A 或 AAAA 记录指向运行 Docker Engine 的主机，客户端直接连接该机的 TCP 443。先确认端口可用，再用 `ip -br addr` 找到接收客户端流量的网卡名称。
 

@@ -111,8 +111,8 @@ async fn respond(
             .map(|v| String::from_utf8_lossy(v.as_bytes()).into_owned()),
         details,
     };
-    let (status, json) = route(context, head).await;
-    let mut bytes = Bytes::from(serde_json::to_vec(&json)?);
+    let (status, body) = route(context, head).await?;
+    let mut bytes = Bytes::from(body);
     let mut response = Response::builder()
         .status(status)
         .header("content-type", "application/json")
