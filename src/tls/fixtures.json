@@ -1,0 +1,187 @@
+{
+  "modern": {
+    "body": "0303000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f02ff11000a1a1a13031301c02fcafe010000db0a0a000000000011000f00000c6578616d706c652e74657374002b000908fafa030403037f1c000a000a0008aaaa001d11ec7777000b0003020001000d000a000804033a3a080411110010000e000c02683208687474702f312e31002d0003020100001b0007060002000300060033000d000b5a5a000103001d0002abcd44cd0005000302683244690005000302683200050005010000000000110003010000001700000012000000150003000000002200040002020300320004000204010035000400020503fe0d00020204ffff00009b9b0001ffdada000100",
+    "expected": {
+      "ciphers": [
+        "TLS_GREASE (0x1A1A)",
+        "TLS_CHACHA20_POLY1305_SHA256",
+        "TLS_AES_128_GCM_SHA256",
+        "TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256",
+        "0xCAFE"
+      ],
+      "extensions": [
+        {
+          "name": "TLS_GREASE (0x0a0a)"
+        },
+        {
+          "name": "server_name (0)",
+          "server_name": "example.test"
+        },
+        {
+          "name": "supported_versions (43)",
+          "versions": [
+            "TLS_GREASE (0xfafa)",
+            "TLS 1.3",
+            "TLS 1.2",
+            "7f1c"
+          ]
+        },
+        {
+          "name": "supported_groups (10)",
+          "supported_groups": [
+            "TLS_GREASE (0xaaaa)",
+            "X25519 (29)",
+            "X25519MLKEM768 (4588)",
+            "Unknown curve 30583"
+          ]
+        },
+        {
+          "name": "ec_point_formats (11)",
+          "elliptic_curves_point_formats": [
+            "0x00",
+            "0x01"
+          ]
+        },
+        {
+          "name": "signature_algorithms (13)",
+          "signature_algorithms": [
+            "ecdsa_secp256r1_sha256",
+            "0x3a3a",
+            "rsa_pss_rsae_sha256",
+            "0x1111"
+          ]
+        },
+        {
+          "name": "application_layer_protocol_negotiation (16)",
+          "protocols": [
+            "h2",
+            "http/1.1"
+          ]
+        },
+        {
+          "name": "psk_key_exchange_modes (45)",
+          "PSK_Key_Exchange_Mode": "PSK with (EC)DHE key establishment (psk_dhe_ke) (1)"
+        },
+        {
+          "name": "compress_certificate (27)",
+          "algorithms": [
+            "brotli (2)",
+            "zstd (3)",
+            "0006"
+          ]
+        },
+        {
+          "name": "key_share (51)",
+          "shared_keys": [
+            {
+              "TLS_GREASE (0x5a5a)": "03"
+            },
+            {
+              "X25519 (29)": "abcd"
+            }
+          ]
+        },
+        {
+          "name": "application_settings (17613)",
+          "protocols": [
+            "h2"
+          ]
+        },
+        {
+          "name": "application_settings_old (17513)",
+          "protocols": [
+            "h2"
+          ]
+        },
+        {
+          "name": "status_request (5)",
+          "status_request": {
+            "certificate_status_type": "OSCP (1)",
+            "responder_id_list_length": 0,
+            "request_extensions_length": 0
+          }
+        },
+        {
+          "name": "status_request_v2 (17)",
+          "status_request": {
+            "certificate_status_type": "OSCP (1)",
+            "responder_id_list_length": 0,
+            "request_extensions_length": 0
+          }
+        },
+        {
+          "name": "extended_master_secret (23)",
+          "master_secret_data": "",
+          "extended_master_secret_data": ""
+        },
+        {
+          "name": "signed_certificate_timestamp (18)"
+        },
+        {
+          "name": "padding (21)",
+          "padding_data_length": 6
+        },
+        {
+          "name": "delegated_credentials (34)",
+          "signature_hash_algorithms": [
+            "ecdsa_sha1"
+          ]
+        },
+        {
+          "name": "signature_algorithms_cert (50)",
+          "data": "00020401"
+        },
+        {
+          "name": "signature_algorithms_cert (50)",
+          "signature_algorithms": [
+            "ecdsa_secp384r1_sha384"
+          ]
+        },
+        {
+          "name": "extensionEncryptedClientHello (boringssl) (65037)",
+          "data": "0204"
+        },
+        {
+          "name": "extensionDuplicate (boringssl) (65535)",
+          "data": ""
+        },
+        {
+          "name": "Unknown extension 39835",
+          "data": "ff"
+        },
+        {
+          "name": "TLS_GREASE (0xdada)"
+        }
+      ],
+      "tls_version_record": "771",
+      "tls_version_negotiated": "772",
+      "ja3": "771,4867-4865-49199-51966,0-43-10-11-13-16-45-27-51-17613-17513-5-17-23-18-21-34-50-53-65037-65535-39835,29-4588-30583,0-1",
+      "ja3_hash": "21d0b3d373159fccf58c11323ab8b737",
+      "ja4": "t13d422h2_432b70885628_b644026b1dbb",
+      "ja4_r": "t13d422h2_1301,1303,c02f,cafe_0005,000a,000b,000d,0011,0012,0015,0017,001b,0022,002b,002d,0032,0033,0035,4469,44cd,9b9b,fe0d,ffff_0403,0804,1111,0503",
+      "peetprint": "GREASE-772-771-32540|2-1.1|GREASE-29-4588-30583|1027-GREASE-2052-4369-1283|1|2-3-6|GREASE-4867-4865-49199-51966|0-10-11-13-16-17-17513-17613-18-21-23-27-34-39835-43-45-5-50-51-53-65037-65535-GREASE-GREASE",
+      "peetprint_hash": "678930ba673870cf0cf8cf3104956afe",
+      "client_random": "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f",
+      "session_id": "ff11"
+    }
+  },
+  "legacy": {
+    "body": "0303000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f000002c02f0100",
+    "expected": {
+      "ciphers": [
+        "TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256"
+      ],
+      "extensions": null,
+      "tls_version_record": "771",
+      "tls_version_negotiated": "771",
+      "ja3": "771,49199,,,",
+      "ja3_hash": "5a6f5ba859dd395751805f3064d612b9",
+      "ja4": "t12d11_f06271c2b022_267e94a09729",
+      "ja4_r": "t12d11_c02f__0000",
+      "peetprint": "||||0||49199|",
+      "peetprint_hash": "4fffae6bcd2236f658ee3153cdac11bd",
+      "client_random": "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f",
+      "session_id": ""
+    }
+  }
+}
