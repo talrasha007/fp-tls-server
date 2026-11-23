@@ -1,5 +1,7 @@
 use crate::Context;
 use anyhow::{ensure, Context as _, Result};
+use bytes::Bytes;
+use http::StatusCode;
 use serde_json::{json, Value};
 use std::{io::Write, sync::Arc, time::Duration};
 use tokio::{
@@ -73,13 +75,44 @@ async fn read_head(io: &mut (impl AsyncRead + Unpin)) -> Result<RequestHead> {
     })
 }
 
-async fn route(context: &Context, head: RequestHead) -> Result<(http::StatusCode, String)> {
-    use http::StatusCode;
-    if head.path.split('?').next() != Some("/api/all") {
-        return Ok((
-            StatusCode::NOT_FOUND,
-            json!({"error":"not found"}).to_string(),
-        ));
+struct Reply {
+    status: StatusCode,
+    content_type: &'static str,
+    body: Bytes,
+}
+
+impl Reply {
+    fn json(status: StatusCode, body: String) -> Self {
+        Self {
+            status,
+            content_type: "application/json",
+            body: body.into(),
+        }
+    }
+}
+
+async fn route(context: &Context, head: RequestHead) -> Result<Reply> {
+    match head.path.split('?').next() {
+        Some("/") if head.method == "GET" => {
+            return Ok(Reply {
+                status: StatusCode::OK,
+                content_type: "text/html; charset=utf-8",
+                body: Bytes::from_static(include_bytes!(concat!(env!("OUT_DIR"), "/index.html"))),
+            })
+        }
+        Some("/") => {
+            return Ok(Reply::json(
+                StatusCode::METHOD_NOT_ALLOWED,
+                json!({"error":"method not allowed"}).to_string(),
+            ))
+        }
+        Some("/api/all") => {}
+        _ => {
+            return Ok(Reply::json(
+                StatusCode::NOT_FOUND,
+                json!({"error":"not found"}).to_string(),
+            ))
+        }
     }
     let (status, value) = if head.method != "GET" {
         (
@@ -107,7 +140,7 @@ async fn route(context: &Context, head: RequestHead) -> Result<(http::StatusCode
         body
     })
     .await?;
-    Ok((status, body))
+    Ok(Reply::json(status, body))
 }
 
 pub async fn serve<S>(mut io: S, is_h2: bool, context: Arc<Context>) -> Result<()>
@@ -117,9 +150,13 @@ where
     if is_h2 {
         return h2_server::serve(io, context).await;
     }
-    let (status, body) = match timeout(DEADLINE, read_head(&mut io)).await? {
+    let Reply {
+        status,
+        content_type,
+        body,
+    } = match timeout(DEADLINE, read_head(&mut io)).await? {
         Ok(head) => route(&context, head).await?,
-        Err(_) => (
+        Err(_) => Reply::json(
             http::StatusCode::BAD_REQUEST,
             json!({"error":"bad request"}).to_string(),
         ),
@@ -129,11 +166,11 @@ where
     } else {
         ""
     };
-    let headers = format!("HTTP/1.1 {} {}\r\nContent-Type: application/json\r\nContent-Length: {}\r\n{allow}Connection: close\r\n\r\n",
+    let headers = format!("HTTP/1.1 {} {}\r\nContent-Type: {content_type}\r\nContent-Length: {}\r\n{allow}Connection: close\r\n\r\n",
         status.as_u16(), status.canonical_reason().unwrap_or(""), body.len());
     timeout(DEADLINE, async {
         io.write_all(headers.as_bytes()).await?;
-        io.write_all(body.as_bytes()).await?;
+        io.write_all(&body).await?;
         io.shutdown().await
     })
     .await??;

@@ -198,6 +198,26 @@ async fn tls_only_response_has_no_request_or_packet_metadata() {
 }
 
 #[tokio::test]
+async fn homepage_serves_rendered_readme_over_http1() {
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+    let (mut client, server) = tokio::io::duplex(4096);
+    let handle = tokio::spawn(super::serve(server, false, context()));
+    client
+        .write_all(b"GET /?from=test HTTP/1.1\r\nHost: test\r\n\r\n")
+        .await
+        .unwrap();
+    let mut response = String::new();
+    client.read_to_string(&mut response).await.unwrap();
+    let (headers, body) = response.split_once("\r\n\r\n").unwrap();
+    assert!(headers.starts_with("HTTP/1.1 200 OK"));
+    assert!(headers.contains("Content-Type: text/html; charset=utf-8"));
+    assert!(body.contains("<h1>fp-tls-server</h1>"));
+    assert!(body.contains("<table>"));
+    assert!(body.contains("<pre><code"));
+    handle.await.unwrap().unwrap();
+}
+
+#[tokio::test]
 async fn rejects_other_routes_over_http1() {
     use tokio::io::{AsyncReadExt, AsyncWriteExt};
     let (mut client, server) = tokio::io::duplex(4096);

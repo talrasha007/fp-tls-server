@@ -111,13 +111,13 @@ async fn respond(
             .map(|v| String::from_utf8_lossy(v.as_bytes()).into_owned()),
         details,
     };
-    let (status, body) = route(context, head).await?;
-    let mut bytes = Bytes::from(body);
+    let reply = route(context, head).await?;
+    let mut bytes = reply.body;
     let mut response = Response::builder()
-        .status(status)
-        .header("content-type", "application/json")
+        .status(reply.status)
+        .header("content-type", reply.content_type)
         .header("content-length", bytes.len());
-    if status == StatusCode::METHOD_NOT_ALLOWED {
+    if reply.status == StatusCode::METHOD_NOT_ALLOWED {
         response = response.header("allow", "GET");
     }
     let mut send = sender.send_response(response.body(())?, false)?;

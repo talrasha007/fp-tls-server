@@ -4,6 +4,9 @@ version = "0.1.0"
 edition = "2021"
 publish = false
 
+[build-dependencies]
+pulldown-cmark = { version = "0.13", default-features = false, features = ["html"] }
+
 [dependencies]
 anyhow = "1"
 base64 = "0.22"

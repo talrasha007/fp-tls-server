@@ -1,5 +1,7 @@
 *
 !Cargo.toml
 !Cargo.lock
+!build.rs
+!README.md
 !src
 !src/**
