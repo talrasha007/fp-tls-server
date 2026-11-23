@@ -6,7 +6,7 @@ use crate::Context;
 use anyhow::{Context as _, Result};
 use bytes::Bytes;
 use h2::{server::SendResponse, RecvStream};
-use http::{Request, Response, StatusCode};
+use http::{Request, Response};
 use std::{
     future::poll_fn,
     io,
@@ -111,23 +111,28 @@ async fn respond(
             .map(|v| String::from_utf8_lossy(v.as_bytes()).into_owned()),
         details,
     };
+    let headers_only = parts.method == http::Method::HEAD;
     let reply = route(context, head).await?;
-    let mut bytes = reply.body;
+    let mut body = reply.body;
     let mut response = Response::builder()
         .status(reply.status)
         .header("content-type", reply.content_type)
-        .header("content-length", bytes.len());
-    if reply.status == StatusCode::METHOD_NOT_ALLOWED {
-        response = response.header("allow", "GET");
+        .header("content-length", body.len());
+    if let Some(allow) = reply.allow {
+        response = response.header("allow", allow);
     }
-    let mut send = sender.send_response(response.body(())?, false)?;
-    while !bytes.is_empty() {
-        send.reserve_capacity(bytes.len().min(16384));
+    let end_stream = headers_only || body.len() == 0;
+    let mut send = sender.send_response(response.body(())?, end_stream)?;
+    if end_stream {
+        return Ok(());
+    }
+    while body.len() != 0 {
+        send.reserve_capacity(body.len().min(16384) as usize);
         let capacity = poll_fn(|cx| send.poll_capacity(cx))
             .await
             .context("closed send stream")??;
-        let chunk = bytes.split_to(capacity.min(bytes.len()));
-        send.send_data(chunk, bytes.is_empty())?;
+        let chunk = body.chunk(capacity.min(16384)).await?;
+        send.send_data(chunk, body.len() == 0)?;
     }
     Ok(())
 }

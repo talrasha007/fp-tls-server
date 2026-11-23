@@ -78,7 +78,38 @@ async fn read_head(io: &mut (impl AsyncRead + Unpin)) -> Result<RequestHead> {
 struct Reply {
     status: StatusCode,
     content_type: &'static str,
-    body: Bytes,
+    body: Body,
+    allow: Option<&'static str>,
+}
+
+enum Body {
+    Memory(Bytes),
+    File {
+        file: tokio::fs::File,
+        remaining: u64,
+    },
+}
+
+impl Body {
+    fn len(&self) -> u64 {
+        match self {
+            Self::Memory(data) => data.len() as u64,
+            Self::File { remaining, .. } => *remaining,
+        }
+    }
+
+    async fn chunk(&mut self, max: usize) -> std::io::Result<Bytes> {
+        let size = self.len().min(max as u64) as usize;
+        match self {
+            Self::Memory(data) => Ok(data.split_to(size)),
+            Self::File { file, remaining } => {
+                let mut data = vec![0; size];
+                file.read_exact(&mut data).await?;
+                *remaining -= size as u64;
+                Ok(Bytes::from(data))
+            }
+        }
+    }
 }
 
 impl Reply {
@@ -86,33 +117,75 @@ impl Reply {
         Self {
             status,
             content_type: "application/json",
-            body: body.into(),
+            body: Body::Memory(body.into()),
+            allow: (status == StatusCode::METHOD_NOT_ALLOWED).then_some("GET"),
         }
     }
 }
 
-async fn route(context: &Context, head: RequestHead) -> Result<Reply> {
-    match head.path.split('?').next() {
-        Some("/") if head.method == "GET" => {
-            return Ok(Reply {
-                status: StatusCode::OK,
-                content_type: "text/html; charset=utf-8",
-                body: Bytes::from_static(include_bytes!(concat!(env!("OUT_DIR"), "/index.html"))),
-            })
-        }
-        Some("/") => {
-            return Ok(Reply::json(
+async fn static_page(context: &Context, path: &str, method: &str) -> Reply {
+    let not_found = || {
+        Reply::json(
+            StatusCode::NOT_FOUND,
+            json!({"error":"not found"}).to_string(),
+        )
+    };
+    if context.www.is_none() && path != "/" {
+        return not_found();
+    }
+    if method != "GET" && !(method == "HEAD" && context.www.is_some()) {
+        return Reply {
+            allow: Some(if context.www.is_some() {
+                "GET, HEAD"
+            } else {
+                "GET"
+            }),
+            ..Reply::json(
                 StatusCode::METHOD_NOT_ALLOWED,
                 json!({"error":"method not allowed"}).to_string(),
-            ))
-        }
-        Some("/api/all") => {}
-        _ => {
-            return Ok(Reply::json(
-                StatusCode::NOT_FOUND,
-                json!({"error":"not found"}).to_string(),
-            ))
-        }
+            )
+        };
+    }
+    let Some(root) = &context.www else {
+        return Reply {
+            status: StatusCode::OK,
+            content_type: "text/html; charset=utf-8",
+            body: Body::Memory(Bytes::from_static(include_bytes!(concat!(
+                env!("OUT_DIR"),
+                "/index.html"
+            )))),
+            allow: None,
+        };
+    };
+    match crate::www::asset(root.clone(), path).await {
+        Ok(asset) => Reply {
+            status: StatusCode::OK,
+            content_type: asset.mime,
+            body: Body::File {
+                file: asset.file,
+                remaining: asset.size,
+            },
+            allow: None,
+        },
+        Err(error) => match error.kind() {
+            std::io::ErrorKind::NotFound
+            | std::io::ErrorKind::NotADirectory
+            | std::io::ErrorKind::PermissionDenied => not_found(),
+            _ => {
+                eprintln!("Could not open static file: {error}");
+                Reply::json(
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    json!({"error":"could not read file"}).to_string(),
+                )
+            }
+        },
+    }
+}
+
+async fn route(context: &Context, head: RequestHead) -> Result<Reply> {
+    let path = head.path.split('?').next().unwrap_or("");
+    if path != "/api/all" {
+        return Ok(static_page(context, path, &head.method).await);
     }
     let (status, value) = if head.method != "GET" {
         (
@@ -150,27 +223,30 @@ where
     if is_h2 {
         return h2_server::serve(io, context).await;
     }
+    let head = timeout(DEADLINE, read_head(&mut io)).await?;
+    let headers_only = head.as_ref().is_ok_and(|r| r.method == "HEAD");
     let Reply {
         status,
         content_type,
-        body,
-    } = match timeout(DEADLINE, read_head(&mut io)).await? {
+        mut body,
+        allow,
+    } = match head {
         Ok(head) => route(&context, head).await?,
         Err(_) => Reply::json(
             http::StatusCode::BAD_REQUEST,
             json!({"error":"bad request"}).to_string(),
         ),
     };
-    let allow = if status == http::StatusCode::METHOD_NOT_ALLOWED {
-        "Allow: GET\r\n"
-    } else {
-        ""
-    };
+    let allow = allow
+        .map(|methods| format!("Allow: {methods}\r\n"))
+        .unwrap_or_default();
     let headers = format!("HTTP/1.1 {} {}\r\nContent-Type: {content_type}\r\nContent-Length: {}\r\n{allow}Connection: close\r\n\r\n",
         status.as_u16(), status.canonical_reason().unwrap_or(""), body.len());
     timeout(DEADLINE, async {
         io.write_all(headers.as_bytes()).await?;
-        io.write_all(&body).await?;
+        while !headers_only && body.len() != 0 {
+            io.write_all(&body.chunk(64 * 1024).await?).await?;
+        }
         io.shutdown().await
     })
     .await??;

@@ -178,6 +178,7 @@ fn context() -> std::sync::Arc<crate::Context> {
         peer,
         tls: json!({}),
         packets: Some(crate::tcp::Capture::default().connection(peer, local)),
+        www: None,
     })
 }
 
@@ -188,6 +189,7 @@ async fn tls_only_response_has_no_request_or_packet_metadata() {
         peer: "127.0.0.1:12345".parse().unwrap(),
         tls: tls.clone(),
         packets: None,
+        www: None,
     };
     for version in ["HTTP/1.1", "h2"] {
         let response = context
@@ -214,6 +216,29 @@ async fn homepage_serves_rendered_readme_over_http1() {
     assert!(body.contains("<h1>fp-tls-server</h1>"));
     assert!(body.contains("<table>"));
     assert!(body.contains("<pre><code"));
+    handle.await.unwrap().unwrap();
+}
+
+#[tokio::test]
+async fn configured_www_serves_binary_assets() {
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+    let dir = tempfile::tempdir().unwrap();
+    std::fs::write(dir.path().join("图.png"), [0, 255, 17]).unwrap();
+    let mut ctx = context();
+    std::sync::Arc::get_mut(&mut ctx).unwrap().www = Some(crate::www::open(dir.path()).unwrap());
+    let (mut client, server) = tokio::io::duplex(4096);
+    let handle = tokio::spawn(super::serve(server, false, ctx));
+    client
+        .write_all(b"GET /%E5%9B%BE.png?v=1 HTTP/1.1\r\nHost: test\r\n\r\n")
+        .await
+        .unwrap();
+    let mut response = Vec::new();
+    client.read_to_end(&mut response).await.unwrap();
+    let end = response.windows(4).position(|s| s == b"\r\n\r\n").unwrap();
+    let headers = std::str::from_utf8(&response[..end]).unwrap();
+    assert!(headers.starts_with("HTTP/1.1 200 OK"));
+    assert!(headers.contains("Content-Type: image/png"));
+    assert_eq!(response[end + 4..], [0, 255, 17]);
     handle.await.unwrap().unwrap();
 }
 

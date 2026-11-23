@@ -1,0 +1,11 @@
+services:
+  server:
+    environment:
+      WWW: /www
+    volumes:
+      - type: bind
+        source: ${WWW_DIR:-./www}
+        target: /www
+        read_only: true
+        bind:
+          create_host_path: false

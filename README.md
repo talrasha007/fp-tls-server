@@ -71,6 +71,20 @@ services:
 
 容器使用 host 网络，在指定网卡上以非混杂模式过滤目标端口的入站 TCP 报文。Compose 配置只保留 `NET_RAW` 和 `NET_BIND_SERVICE`，根文件系统及证书目录均以只读方式挂载。服务从实际 socket 获取对端地址。如果以后增加会重新建立 TCP 连接的代理，结果将描述代理到服务的连接。
 
+## 提供静态网页
+
+默认首页展示本 README。要发布自己的站点，可在启动服务时指定 `--www /srv/site`，或设置环境变量 `WWW=/srv/site`。同时设置时，命令行参数优先。目录必须已经存在。
+
+Docker Compose 部署可将网站放在宿主机的 `./www/` 中，首页保存为 `./www/index.html`，再启用仓库中的静态目录挂载配置。
+
+```sh
+docker compose -f compose.yaml -f compose.www.yaml up -d
+```
+
+要挂载其他目录，可在 `.env` 中设置 `WWW_DIR=/srv/site`。`compose.www.yaml` 会将它只读挂载到容器的 `/www`。若自行编写 Compose 配置，在 `server.environment` 中添加 `WWW: /www`，并在 `server.volumes` 中追加 `./www:/www:ro` 即可。
+
+访问 `/` 或 `/docs/` 时读取对应目录的 `index.html`。例如 `/assets/style.css` 对应 `www/assets/style.css`。静态文件支持 GET 和 HEAD，文件更新后下次请求即生效。缺少文件或目录首页时返回 404。`/api/all` 始终由指纹接口处理。
+
 ## 如何读取结果
 
 如果启动时系统拒绝抓包（例如容器缺少 `NET_RAW`），服务会记录启动提示并继续提供 HTTPS。在这种模式下，HTTP/1.1 和 HTTP/2 的 `GET /api/all` 都返回 HTTP 200，JSON 顶层只有 `tls`，其中包含完整的握手详情和 TLS 指纹。要在 Compose 中使用这种模式，可以从 `cap_add` 移除 `NET_RAW`，保留现有的 `cap_drop: [ALL]` 和监听 443 所需的 `NET_BIND_SERVICE`，然后运行 `docker compose up -d` 重建容器。

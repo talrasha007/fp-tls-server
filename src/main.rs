@@ -2,10 +2,12 @@ mod handshake;
 mod http;
 mod tcp;
 mod tls;
+mod www;
 
 use std::{env, fs::File, io::BufReader, net::SocketAddr, sync::Arc, time::Duration};
 
 use anyhow::{ensure, Context as _, Result};
+use clap::Parser;
 use rustls::ServerConfig;
 use serde_json::{json, Value};
 use socket2::{Domain, Protocol, Socket, Type};
@@ -20,6 +22,14 @@ pub struct Context {
     peer: SocketAddr,
     tls: Value,
     packets: Option<tcp::Connection>,
+    www: Option<Arc<cap_std::fs::Dir>>,
+}
+
+#[derive(Parser)]
+struct Args {
+    /// Root directory for static web pages and assets
+    #[arg(long, env = "WWW", value_name = "DIR")]
+    www: Option<std::path::PathBuf>,
 }
 
 impl Context {
@@ -86,6 +96,7 @@ async fn handle(
     socket: TcpStream,
     acceptor: TlsAcceptor,
     capture: Option<&tcp::Capture>,
+    www: Option<Arc<cap_std::fs::Dir>>,
 ) -> Result<()> {
     let peer = socket.peer_addr()?;
     let local = socket.local_addr()?;
@@ -107,6 +118,7 @@ async fn handle(
         peer: canonical_addr(peer),
         tls,
         packets,
+        www,
     });
     http::serve(stream, is_h2, context).await
 }
@@ -122,6 +134,7 @@ fn canonical_addr(addr: SocketAddr) -> SocketAddr {
 
 #[tokio::main]
 async fn main() -> Result<()> {
+    let www = Args::parse().www.as_deref().map(www::open).transpose()?;
     let address: SocketAddr = env::var("LISTEN_ADDR")
         .unwrap_or_else(|_| "[::]:443".into())
         .parse()
@@ -160,9 +173,10 @@ async fn main() -> Result<()> {
         };
         let acceptor = acceptor.clone();
         let capture = capture.clone();
+        let www = www.clone();
         tokio::spawn(async move {
             let _slot = slot;
-            if let Err(err) = handle(socket, acceptor, capture.as_ref()).await {
+            if let Err(err) = handle(socket, acceptor, capture.as_ref(), www).await {
                 eprintln!("Connection closed: {err:#}");
             }
         });
